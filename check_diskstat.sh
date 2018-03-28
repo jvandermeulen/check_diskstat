@@ -1,7 +1,7 @@
 #!/bin/bash
 # Original Author: Unknown
 #
-# Version 0.12.2
+# Version 0.12.3 (0.12.2_clone)
 #
 # Changes: 25-Feb-2013 Mark Clarkson <mark.clarkson@smorg.co.uk>
 #          Added brief option to reduce size of output
@@ -27,6 +27,8 @@
 #          Check for negative values
 # Changes: 12-Jan-2017 Neil MacGregor <neil.macgregor@ualberta.ca>
 #          Include thresholds in output
+# Changes: 28-Mar-2018 Jorgen van der Meulen <jorgen@nagios.nl>
+#          added device info (mapping lvm name to devicemapper name). requires lsblk binary
 
 
 DISK=
@@ -161,7 +163,7 @@ if [ ! -e /sys/block/$DISK/stat ]; then
         }
         DISK="dm-$MINOR"
     elif [[ -L $ORIGDISK ]]; then
-        # Symlink to device name 
+        # Symlink to device name
         SNAME=`readlink $ORIGDISK`
         DISK=`basename $SNAME`
     else
@@ -176,9 +178,27 @@ if [ $? -eq $E_UNKNOWN ]; then
     exit $E_UNKNOWN
 fi
 
+
+# Show LVM devicename instead of devicemapper dm-x device
+type lsblk  >/dev/null 2>&1 || { echo >&2 "UNKNOWN: no lsblk binary found. Please install it (util-linux package on RHEL/CentOS)."; exit 3; }
+LVM_VG_LV_NAME=$(lsblk -o NAME,KNAME -rn | awk  -v pattern="$DISK" '$2 ~ pattern {print $1}')
+#DISK=dm-0
+# lsblk -o NAME,KNAME -rn | awk "/${DISK}$/ {print $1}"       # does not work, prints $0 instead of $1
+#lsblk -o NAME,KNAME -rn | awk  -v pattern="$DISK" '$2 ~ pattern {print $1}'
+#vg_sys-lv_root
+
+if [[ ! "${LVM_VG_LV_NAME}" =~ [a-z] ]]; then
+        #echo "NAME contains no alpha chars
+        LVM_VG_LV_NAME=$DISK
+fi
+
+#
+
+
+
 if [ ! -f $HISTFILE ]; then
     echo $NEWDISKSTAT >$HISTFILE
-    echo "UNKNOWN - Initial buffer creation..." 
+    echo "UNKNOWN - Initial buffer creation..."
     exit $E_UNKNOWN
 fi
 
@@ -192,7 +212,7 @@ OLDDISKSTAT_EPOCH=$(date -d "$OLDDISKSTAT_TIME" +%s)
 NEWDISKSTAT_EPOCH=$(date +%s)
 
 echo $NEWDISKSTAT >$HISTFILE
-# now we have old and current stat; 
+# now we have old and current stat;
 # let compare it
 OLD_SECTORS_READ=$(echo $OLDDISKSTAT | awk '{print $3}')
 NEW_SECTORS_READ=$(echo $NEWDISKSTAT | awk '{print $3}')
@@ -330,7 +350,7 @@ do
 done
 
 if [[ $BRIEF -eq 0 ]]; then
-    echo "${OUTPUT}summary: $TPS io/s, read $SECTORS_READ sectors (${KBYTES_READ_PER_SEC}kB/s), write $SECTORS_WRITE sectors (${KBYTES_WRITTEN_PER_SEC}kB/s), queue size $AQUSZ in $TIME seconds | tps=${TPS};$WARN_TPS;$CRIT_TPS; read=${BYTES_READ_PER_SEC};$WARN_READ;$CRIT_READ; write=${BYTES_WRITTEN_PER_SEC};$WARN_WRITE;$CRIT_WRITE; avgrq-sz=${ARQSZ};;; avgqu-sz=${AQUSZ};$WARN_QSZ;$CRIT_QSZ; await=${AWAIT}ms;;;"
+    echo "${OUTPUT}summary ${LVM_VG_LV_NAME}: $TPS io/s, read $SECTORS_READ sectors (${KBYTES_READ_PER_SEC}kB/s), write $SECTORS_WRITE sectors (${KBYTES_WRITTEN_PER_SEC}kB/s), queue size $AQUSZ in $TIME seconds | tps=${TPS};$WARN_TPS;$CRIT_TPS; read=${BYTES_READ_PER_SEC};$WARN_READ;$CRIT_READ; write=${BYTES_WRITTEN_PER_SEC};$WARN_WRITE;$CRIT_WRITE; avgrq-sz=${ARQSZ};;; avgqu-sz=${AQUSZ};$WARN_QSZ;$CRIT_QSZ; await=${AWAIT}ms;;;"
 else
     echo "$TPS io/s, read ${KBYTES_READ_PER_SEC}kB/s, write ${KBYTES_WRITTEN_PER_SEC}kB/s, ave. queue size ${AQUSZ} | tps=${TPS};$WARN_TPS;$CRIT_TPS; read=${BYTES_READ_PER_SEC};$WARN_READ;$CRIT_READ; write=${BYTES_WRITTEN_PER_SEC};$WARN_WRITE;$CRIT_WRITE; avgrq-sz=${ARQSZ};;; avgqu-sz=${AQUSZ};$WARN_QSZ;$CRIT_QSZ; await=${AWAIT}ms;;;"
 fi
